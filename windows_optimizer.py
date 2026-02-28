@@ -905,7 +905,7 @@ class WindowsOptimizer(ctk.CTk):
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 )
                 self.after(0, lambda: self.status_var.set("Restarting to apply update…"))
-                self.after(800, sys.exit)
+                self.after(800, lambda: os._exit(0))
 
             except Exception as e:
                 self.after(0, lambda: self.status_var.set(f"Update failed: {e}"))
