@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.4.0"
+VERSION     = "1.5.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -350,6 +350,14 @@ def run_sfc() -> str:
     return "SFC scan started — check the console window for results (may take a few minutes)."
 
 
+def run_dism() -> str:
+    subprocess.Popen(
+        ["cmd", "/c", "DISM /Online /Cleanup-Image /RestoreHealth"],
+        creationflags=subprocess.CREATE_NEW_CONSOLE,
+    )
+    return "DISM scan started — check the console window for results (may take several minutes)."
+
+
 def check_for_update():
     """Returns (latest_version, exe_url) or (None, None) if up to date or on error."""
     import urllib.request, json
@@ -431,16 +439,9 @@ class WindowsOptimizer(ctk.CTk):
         ctk.CTkLabel(
             header,
             text="Windows Optimizer",
-            font=ctk.CTkFont(family="Segoe UI", size=26, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
             text_color="#ffffff",
-        ).pack(pady=(18, 2))
-
-        ctk.CTkLabel(
-            header,
-            text="System performance tools at your fingertips",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color="#555555",
-        ).pack(pady=(0, 16))
+        ).pack(pady=(8, 8))
 
         # ── Admin banner (filled later) ──────────────────────────────────────
         self.admin_banner = ctk.CTkLabel(
@@ -466,8 +467,7 @@ class WindowsOptimizer(ctk.CTk):
             text_color="#aaaaaa",
             text_color_disabled="#444444",
         )
-        tabs.pack(fill="both", expand=True, padx=20, pady=(10, 0))
-
+        tabs.pack(fill="both", expand=True, padx=10, pady=(0, 0))
         tabs.add("Optimizations")
         tabs.add("Downloads")
         tabs.add("Maintenance")
@@ -614,7 +614,7 @@ class WindowsOptimizer(ctk.CTk):
         maint_tab = tabs.tab("Maintenance")
 
         # Cards view (default)
-        self._maint_cards_frame = ctk.CTkFrame(maint_tab, fg_color="transparent")
+        self._maint_cards_frame = ctk.CTkScrollableFrame(maint_tab, fg_color="transparent")
         self._maint_cards_frame.pack(fill="both", expand=True, padx=8, pady=8)
 
         self._make_card(
@@ -623,6 +623,14 @@ class WindowsOptimizer(ctk.CTk):
             desc="Scan for and repair corrupted Windows system files using sfc /scannow.",
             btn_text="Run SFC Scan",
             action=run_sfc,
+        )
+
+        self._make_card(
+            self._maint_cards_frame,
+            title="DISM Scan",
+            desc="Repair the Windows component store using DISM /RestoreHealth.",
+            btn_text="Run DISM Scan",
+            action=run_dism,
         )
 
         self._make_card(
@@ -641,60 +649,45 @@ class WindowsOptimizer(ctk.CTk):
             action=run_disk_cleanup,
         )
 
-        self._make_card(
-            self._maint_cards_frame,
-            title="PC Specs",
-            desc="View hardware details: CPU, GPU, Motherboard, and RAM.",
-            btn_text="PC Specs",
-            command=self._open_pc_specs,
-        )
+        # ── Footer (status + specs in a compact 2-row bar) ────────────
+        footer = ctk.CTkFrame(self, fg_color="#111111", corner_radius=0)
+        footer.pack(fill="x", side="bottom")
 
-        # Specs view (hidden until PC Specs is clicked)
-        self._maint_specs_frame = ctk.CTkFrame(maint_tab, fg_color="transparent")
+        footer_inner = ctk.CTkFrame(footer, fg_color="transparent")
+        footer_inner.pack(fill="x", padx=12, pady=(4, 5))
 
-        # Header row: back button + title
-        specs_header = ctk.CTkFrame(self._maint_specs_frame, fg_color="transparent")
-        specs_header.pack(fill="x", padx=8, pady=(8, 4))
-
-        ctk.CTkButton(
-            specs_header,
-            text="← Back",
-            width=80,
-            height=30,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            fg_color=BTN_COLOR,
-            hover_color=BTN_HOVER,
-            text_color="#aaaaaa",
-            border_width=1,
-            border_color="#2e2e2e",
-            corner_radius=8,
-            command=self._back_to_maintenance,
-        ).pack(side="left")
-
-        ctk.CTkLabel(
-            specs_header,
-            text="PC Specs",
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
-            text_color="#e0e0e0",
-        ).pack(side="left", padx=(14, 0))
-
-        # Container for the spec rows (populated dynamically)
-        self._specs_content = ctk.CTkFrame(self._maint_specs_frame, fg_color="#141414", corner_radius=10)
-        self._specs_content.pack(fill="both", expand=True, padx=8, pady=(4, 8))
-
-        # ── Status bar ───────────────────────────────────────────────────────
-        status_frame = ctk.CTkFrame(self, fg_color="#111111", corner_radius=0, height=40)
-        status_frame.pack(fill="x", side="bottom")
-        status_frame.pack_propagate(False)
+        # Row 1: status (left) + CPU · GPU (right)
+        row1 = ctk.CTkFrame(footer_inner, fg_color="transparent")
+        row1.pack(fill="x")
 
         self.status_var = ctk.StringVar(value="Ready.")
         ctk.CTkLabel(
-            status_frame,
+            row1,
             textvariable=self.status_var,
-            font=ctk.CTkFont(family="Segoe UI", size=11),
+            font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color="#555555",
             anchor="w",
-        ).pack(fill="both", padx=14, pady=10)
+        ).pack(side="left")
+
+        self._spec_row1 = ctk.CTkLabel(
+            row1, text="",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color="#444444",
+            anchor="e",
+        )
+        self._spec_row1.pack(side="right")
+
+        # Row 2: RAM · Motherboard (right-aligned)
+        row2 = ctk.CTkFrame(footer_inner, fg_color="transparent")
+        row2.pack(fill="x")
+
+        self._spec_row2 = ctk.CTkLabel(
+            row2, text="",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color="#444444",
+            anchor="e",
+        )
+        self._spec_row2.pack(side="right")
 
     def _make_card(self, parent, title, desc, btn_text, action=None, command=None):
         card = ctk.CTkFrame(parent, fg_color="#141414", corner_radius=10)
@@ -814,63 +807,14 @@ class WindowsOptimizer(ctk.CTk):
 
     def _prefetch_specs(self):
         try:
-            self._cached_specs = get_pc_specs()
+            specs = get_pc_specs()
+            self._cached_specs = specs
+            line1 = "CPU: {CPU}  ·  GPU: {GPU}".format(**specs)
+            line2 = "RAM: {RAM}  ·  Board: {Motherboard}".format(**specs)
+            self.after(0, lambda: self._spec_row1.configure(text=line1))
+            self.after(0, lambda: self._spec_row2.configure(text=line2))
         except Exception:
             pass
-
-    def _open_pc_specs(self):
-        if self._cached_specs is not None:
-            self._show_specs_inline(self._cached_specs)
-            return
-
-        self.status_var.set("Gathering system specs…")
-
-        def worker():
-            try:
-                specs = get_pc_specs()
-            except Exception as e:
-                self.after(0, lambda: self.status_var.set(f"Error: {e}"))
-                return
-            self._cached_specs = specs
-            self.after(0, lambda: (self.status_var.set("Ready."), self._show_specs_inline(specs)))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _show_specs_inline(self, specs: dict):
-        # Clear any previously rendered rows
-        for widget in self._specs_content.winfo_children():
-            widget.destroy()
-
-        for label, value in specs.items():
-            row = ctk.CTkFrame(self._specs_content, fg_color="transparent")
-            row.pack(fill="x", padx=16, pady=8)
-
-            ctk.CTkLabel(
-                row,
-                text=f"{label}:",
-                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                text_color="#888888",
-                width=110,
-                anchor="w",
-            ).pack(side="left")
-
-            ctk.CTkLabel(
-                row,
-                text=value,
-                font=ctk.CTkFont(family="Segoe UI", size=12),
-                text_color="#e0e0e0",
-                anchor="w",
-                wraplength=340,
-                justify="left",
-            ).pack(side="left", fill="x", expand=True)
-
-        # Swap frames
-        self._maint_cards_frame.pack_forget()
-        self._maint_specs_frame.pack(fill="both", expand=True, padx=8, pady=8)
-
-    def _back_to_maintenance(self):
-        self._maint_specs_frame.pack_forget()
-        self._maint_cards_frame.pack(fill="both", expand=True, padx=8, pady=8)
 
     # ── Auto-update ────────────────────────────────────────────────────────────
     def _check_for_update_async(self):
