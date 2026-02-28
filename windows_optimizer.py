@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.3.0"
+VERSION     = "1.4.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -409,6 +409,14 @@ class WindowsOptimizer(ctk.CTk):
         self.configure(fg_color="#0a0a0a")
 
         self._cached_specs = None
+        # Clean up leftover .old file from a previous auto-update
+        if getattr(sys, "frozen", False):
+            old = sys.executable + ".old"
+            if os.path.exists(old):
+                try:
+                    os.remove(old)
+                except Exception:
+                    pass
         self._build_ui()
         self._check_admin_banner()
         threading.Thread(target=self._prefetch_specs, daemon=True).start()
@@ -908,11 +916,12 @@ class WindowsOptimizer(ctk.CTk):
 
         def worker():
             try:
-                import urllib.request, tempfile
+                import urllib.request
                 self.after(0, lambda: self.status_var.set(f"Downloading v{latest}…"))
 
                 current_exe = sys.executable
                 new_exe = current_exe + ".new"
+                old_exe = current_exe + ".old"
 
                 def reporthook(count, block, total):
                     if total > 0:
@@ -921,30 +930,21 @@ class WindowsOptimizer(ctk.CTk):
 
                 urllib.request.urlretrieve(url, new_exe, reporthook)
 
-                # Batch script: wait for this process to exit, swap the EXE, relaunch
-                pid = os.getpid()
-                bat = (
-                    f"@echo off\n"
-                    f":wait\n"
-                    f"tasklist /FI \"PID eq {pid}\" 2>NUL | find /I \"{pid}\" >NUL\n"
-                    f"if not errorlevel 1 (timeout /t 1 /nobreak >NUL & goto wait)\n"
-                    f"timeout /t 1 /nobreak >NUL\n"
-                    f"move /y \"{new_exe}\" \"{current_exe}\"\n"
-                    f"start \"\" \"{current_exe}\"\n"
-                    f"del \"%~f0\"\n"
-                )
-                tmp = tempfile.NamedTemporaryFile(
-                    suffix=".bat", delete=False, mode="w", encoding="utf-8"
-                )
-                tmp.write(bat)
-                tmp.close()
+                self.after(0, lambda: self.status_var.set("Applying update…"))
+
+                # On Windows, a running EXE can be renamed (but not deleted).
+                # So: rename current → .old, rename new → current, launch, exit.
+                if os.path.exists(old_exe):
+                    os.remove(old_exe)
+                os.rename(current_exe, old_exe)
+                os.rename(new_exe, current_exe)
 
                 subprocess.Popen(
-                    ["cmd", "/c", tmp.name],
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
+                    [current_exe],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 )
-                self.after(0, lambda: self.status_var.set("Restarting to apply update…"))
-                self.after(800, lambda: os._exit(0))
+                self.after(0, lambda: self.status_var.set("Restarting…"))
+                self.after(500, lambda: os._exit(0))
 
             except Exception as e:
                 self.after(0, lambda: self.status_var.set(f"Update failed: {e}"))
