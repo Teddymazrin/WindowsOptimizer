@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.6.0"
+VERSION     = "1.8.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -575,9 +575,11 @@ class WindowsOptimizer(ctk.CTk):
         self.configure(fg_color="#0a0a0a")
 
         self._cached_specs = None
-        # Clean up leftover .old file and _MEI* temp dirs from a previous auto-update
+
+        # If launched with --cleanup-update <path>, delete the old EXE
         if getattr(sys, "frozen", False):
-            threading.Thread(target=self._cleanup_old_update, daemon=True).start()
+            self._handle_cleanup_arg()
+
         self._build_ui()
         self._check_admin_banner()
         threading.Thread(target=self._prefetch_specs, daemon=True).start()
@@ -1005,27 +1007,33 @@ class WindowsOptimizer(ctk.CTk):
         fn = apply_fn if switch.get() else revert_fn
         self._run(fn)
 
-    def _cleanup_old_update(self):
-        """Best-effort fallback: remove leftover .old EXE
-        that the cleanup batch script may have missed."""
+    def _handle_cleanup_arg(self):
+        """If launched with --cleanup-update <old_path>, delete the old EXE in background."""
+        try:
+            if "--cleanup-update" in sys.argv:
+                idx = sys.argv.index("--cleanup-update")
+                old_path = sys.argv[idx + 1]
+                threading.Thread(
+                    target=self._delete_old_exe,
+                    args=(old_path,),
+                    daemon=True,
+                ).start()
+        except (IndexError, ValueError):
+            pass
+
+    @staticmethod
+    def _delete_old_exe(old_path):
+        """Retry deleting the old EXE for up to ~15 seconds (file may still be locked)."""
         import time
-        import shutil
-
-        time.sleep(8)  # give the batch script plenty of time to finish first
-
-        old_exe = sys.executable + ".old"
-        temp_dir = os.environ.get("TEMP", "")
-        if os.path.exists(old_exe):
+        for _ in range(30):
             try:
-                os.remove(old_exe)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                return  # deleted or already gone
+            except PermissionError:
+                time.sleep(0.5)
             except Exception:
-                # Failsafe: move to TEMP folder if delete fails
-                try:
-                    if temp_dir:
-                        temp_path = os.path.join(temp_dir, os.path.basename(old_exe))
-                        shutil.move(old_exe, temp_path)
-                except Exception:
-                    pass
+                return
 
     def _prefetch_specs(self):
         try:
@@ -1085,10 +1093,12 @@ class WindowsOptimizer(ctk.CTk):
                 import urllib.request
                 self.after(0, lambda: self.status_var.set(f"Downloading v{latest}…"))
 
-                current_exe = sys.executable
-                new_exe = current_exe + ".new"
-                old_exe = current_exe + ".old"
+                current_exe = sys.executable                       # e.g. C:\Tools\WinOptimizer.exe
+                exe_dir     = os.path.dirname(current_exe)         # e.g. C:\Tools
+                exe_name    = os.path.basename(current_exe)        # e.g. WinOptimizer.exe
+                new_exe     = os.path.join(exe_dir, exe_name + ".new")  # download target
 
+                # ── 1. Download new EXE next to the current one ──────────
                 def reporthook(count, block, total):
                     if total > 0:
                         pct = min(100, int(count * block * 100 / total))
@@ -1096,40 +1106,62 @@ class WindowsOptimizer(ctk.CTk):
 
                 urllib.request.urlretrieve(url, new_exe, reporthook)
 
+                # ── 2. Verify the download isn't empty / corrupt ─────────
+                if os.path.getsize(new_exe) < 1_000_000:  # sanity: EXE should be >1 MB
+                    raise RuntimeError("Downloaded file is too small — update aborted.")
+
                 self.after(0, lambda: self.status_var.set("Applying update…"))
 
-                # Write batch script to handle closing, renaming, launching, and cleanup (fully silent)
-                temp_dir = os.environ.get("TEMP", "")
+                # ── 3. Write a batch script that:
+                #        - waits for the current process to exit
+                #        - deletes the old EXE
+                #        - renames the .new to the original name
+                #        - launches the new EXE with a --cleanup-update flag
+                #        - deletes itself
+                temp_dir   = os.environ.get("TEMP", exe_dir)
                 batch_path = os.path.join(temp_dir, "_wo_update.bat")
-                exe_name = os.path.basename(current_exe)
-                new_name = os.path.basename(new_exe)
-                old_name = os.path.basename(old_exe)
-                batch = f"""@echo off
-REM Kill running app
-taskkill /IM "{exe_name}" /F >NUL 2>&1
-timeout /t 2 /nobreak >NUL
-REM Rename current exe to .old
-rename "{current_exe}" "{old_name}"
-REM Rename new exe to current
-rename "{new_exe}" "{exe_name}"
-REM Start the new exe in background (no window)
-start "" /b "{current_exe}"
-timeout /t 8 /nobreak >NUL
-REM Delete the old exe and this batch file
-del /f /q "{old_exe}"
+                current_pid = os.getpid()
+
+                batch = f'''@echo off
+REM ── Wait for the old process to fully exit ──
+:wait_loop
+tasklist /FI "PID eq {current_pid}" 2>NUL | find /I "{current_pid}" >NUL
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >NUL
+    goto wait_loop
+)
+
+REM ── Delete old EXE (now unlocked) ──
+del /f /q "{current_exe}"
+
+REM ── Rename downloaded .new → original name ──
+move /y "{new_exe}" "{current_exe}"
+
+REM ── Launch the updated EXE ──
+start "" "{current_exe}"
+
+REM ── Delete this batch script ──
 del /f /q "%~f0"
-"""
+'''
                 with open(batch_path, "w") as f:
                     f.write(batch)
 
+                # ── 4. Launch the batch script detached and exit ─────────
                 subprocess.Popen(
                     ["cmd", "/c", batch_path],
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
                 )
+
                 self.after(0, lambda: self.status_var.set("Restarting…"))
                 self.after(500, lambda: os._exit(0))
 
             except Exception as e:
+                # Clean up failed download
+                if os.path.exists(new_exe):
+                    try:
+                        os.remove(new_exe)
+                    except Exception:
+                        pass
                 self.after(0, lambda: self.status_var.set(f"Update failed: {e}"))
 
         threading.Thread(target=worker, daemon=True).start()
