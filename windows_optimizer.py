@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.1.0"
+VERSION     = "1.2.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -1009,15 +1009,23 @@ class WindowsOptimizer(ctk.CTk):
         """Best-effort fallback: remove leftover .old EXE
         that the cleanup batch script may have missed."""
         import time
+        import shutil
 
         time.sleep(8)  # give the batch script plenty of time to finish first
 
         old_exe = sys.executable + ".old"
-        try:
-            if os.path.exists(old_exe):
+        temp_dir = os.environ.get("TEMP", "")
+        if os.path.exists(old_exe):
+            try:
                 os.remove(old_exe)
-        except Exception:
-            pass
+            except Exception:
+                # Failsafe: move to TEMP folder if delete fails
+                try:
+                    if temp_dir:
+                        temp_path = os.path.join(temp_dir, os.path.basename(old_exe))
+                        shutil.move(old_exe, temp_path)
+                except Exception:
+                    pass
 
     def _prefetch_specs(self):
         try:
@@ -1100,18 +1108,11 @@ class WindowsOptimizer(ctk.CTk):
 
                 # Build a cleanup script that waits for our PID to exit,
                 # then deletes the .old EXE.
-                pid = os.getpid()
                 temp_dir = os.environ.get("TEMP", "")
                 cleanup_bat = os.path.join(temp_dir, "_wo_cleanup.bat")
                 with open(cleanup_bat, "w") as f:
                     f.write(f'@echo off\n')
-                    f.write(f':wait\n')
-                    f.write(f'tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL\n')
-                    f.write(f'if not errorlevel 1 (\n')
-                    f.write(f'  timeout /t 1 /nobreak >NUL\n')
-                    f.write(f'  goto wait\n')
-                    f.write(f')\n')
-                    f.write(f'timeout /t 3 /nobreak >NUL\n')
+                    f.write(f'timeout /t 2 /nobreak >NUL\n')
                     f.write(f'del /f /q "{old_exe}" >NUL 2>&1\n')
                     f.write(f'del /f /q "{cleanup_bat}" >NUL 2>&1\n')
 
