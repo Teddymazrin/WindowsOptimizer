@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.1.0"
+VERSION     = "1.2.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -475,10 +475,15 @@ def run_dism() -> str:
 # ── Boot helpers ──────────────────────────────────────────────────────────────
 def boot_to_bios() -> str:
     """Restart straight into UEFI firmware settings."""
-    subprocess.run(
+    result = subprocess.run(
         ["shutdown", "/r", "/fw", "/t", "0"],
+        capture_output=True,
+        text=True,
         creationflags=_NO_WIN,
     )
+    if result.returncode != 0:
+        err = (result.stderr or result.stdout).strip()
+        return f"Failed to restart to BIOS: {err or 'Your system may not support UEFI firmware boot.'}"
     return "Restarting into BIOS/UEFI…"
 
 
@@ -501,10 +506,11 @@ def boot_to_safe_mode() -> str:
         capture_output=True, creationflags=_NO_WIN,
     )
     # 2) Create a RunOnce entry that removes the safeboot flag once Safe Mode loads.
-    #    This ensures the subsequent restart goes back to normal Windows.
+    #    The * prefix is required — without it, RunOnce entries are SKIPPED in Safe Mode.
+    #    With *, Windows runs the entry even during a Safe Mode boot, then removes it.
     _reg_set(
         r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
-        "RemoveSafeBoot",
+        "*RemoveSafeBoot",
         'bcdedit /deletevalue {current} safeboot',
     )
     # 3) Restart now
