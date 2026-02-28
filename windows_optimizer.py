@@ -900,6 +900,7 @@ class WindowsOptimizer(ctk.CTk):
 
                 subprocess.Popen(
                     ["powershell", "-NoProfile", "-NonInteractive",
+                     "-ExecutionPolicy", "Bypass",
                      "-WindowStyle", "Hidden", "-File", tmp.name],
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 )
