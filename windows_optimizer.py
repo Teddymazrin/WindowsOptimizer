@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.1.1"
+VERSION     = "1.2.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -897,25 +897,27 @@ class WindowsOptimizer(ctk.CTk):
 
                 urllib.request.urlretrieve(url, new_exe, reporthook)
 
-                # PowerShell script: wait for this process to exit, swap the EXE, relaunch
-                ps = (
-                    f"$p={os.getpid()};"
-                    f"while(Get-Process -Id $p -EA 0){{Start-Sleep -ms 200}};"
-                    f"Start-Sleep -ms 300;"
-                    f"Move-Item -Force '{new_exe}' '{current_exe}';"
-                    f"Start-Process '{current_exe}'"
+                # Batch script: wait for this process to exit, swap the EXE, relaunch
+                pid = os.getpid()
+                bat = (
+                    f"@echo off\n"
+                    f":wait\n"
+                    f"tasklist /FI \"PID eq {pid}\" 2>NUL | find /I \"{pid}\" >NUL\n"
+                    f"if not errorlevel 1 (timeout /t 1 /nobreak >NUL & goto wait)\n"
+                    f"timeout /t 1 /nobreak >NUL\n"
+                    f"move /y \"{new_exe}\" \"{current_exe}\"\n"
+                    f"start \"\" \"{current_exe}\"\n"
+                    f"del \"%~f0\"\n"
                 )
                 tmp = tempfile.NamedTemporaryFile(
-                    suffix=".ps1", delete=False, mode="w", encoding="utf-8"
+                    suffix=".bat", delete=False, mode="w", encoding="utf-8"
                 )
-                tmp.write(ps)
+                tmp.write(bat)
                 tmp.close()
 
                 subprocess.Popen(
-                    ["powershell", "-NoProfile", "-NonInteractive",
-                     "-ExecutionPolicy", "Bypass",
-                     "-WindowStyle", "Hidden", "-File", tmp.name],
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                    ["cmd", "/c", tmp.name],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
                 )
                 self.after(0, lambda: self.status_var.set("Restarting to apply update…"))
                 self.after(800, lambda: os._exit(0))
