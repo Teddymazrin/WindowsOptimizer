@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.5.0"
+VERSION     = "1.6.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -417,14 +417,9 @@ class WindowsOptimizer(ctk.CTk):
         self.configure(fg_color="#0a0a0a")
 
         self._cached_specs = None
-        # Clean up leftover .old file from a previous auto-update
+        # Clean up leftover .old file and _MEI* temp dirs from a previous auto-update
         if getattr(sys, "frozen", False):
-            old = sys.executable + ".old"
-            if os.path.exists(old):
-                try:
-                    os.remove(old)
-                except Exception:
-                    pass
+            threading.Thread(target=self._cleanup_old_update, daemon=True).start()
         self._build_ui()
         self._check_admin_banner()
         threading.Thread(target=self._prefetch_specs, daemon=True).start()
@@ -804,6 +799,37 @@ class WindowsOptimizer(ctk.CTk):
     def _run_toggle(self, switch, apply_fn, revert_fn):
         fn = apply_fn if switch.get() else revert_fn
         self._run(fn)
+
+    def _cleanup_old_update(self):
+        """Remove the .old EXE and stale _MEI* temp dirs left by a previous update.
+        Retries a few times with delays because the old process may still be exiting."""
+        import time, glob
+
+        # 1) Delete <exe>.old
+        old_exe = sys.executable + ".old"
+        for _ in range(10):
+            if not os.path.exists(old_exe):
+                break
+            try:
+                os.remove(old_exe)
+                break
+            except Exception:
+                time.sleep(2)
+
+        # 2) Remove stale _MEI* dirs in %TEMP% that belong to this app.
+        #    The *current* process's _MEIPASS must be skipped.
+        current_mei = getattr(sys, "_MEIPASS", None)
+        temp_dir = os.environ.get("TEMP", "")
+        if temp_dir:
+            for mei in glob.glob(os.path.join(temp_dir, "_MEI*")):
+                if mei == current_mei:
+                    continue
+                for _ in range(5):
+                    try:
+                        shutil.rmtree(mei)
+                        break
+                    except Exception:
+                        time.sleep(2)
 
     def _prefetch_specs(self):
         try:
