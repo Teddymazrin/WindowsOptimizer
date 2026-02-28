@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.1.0"
+VERSION     = "1.0.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -989,11 +989,11 @@ class WindowsOptimizer(ctk.CTk):
         self._run(fn)
 
     def _cleanup_old_update(self):
-        """Best-effort fallback: remove leftover .old EXE and stale _MEI* dirs
-        that the cleanup batch script may have missed (e.g. from older versions)."""
-        import time, glob
+        """Best-effort fallback: remove leftover .old EXE
+        that the cleanup batch script may have missed."""
+        import time
 
-        time.sleep(5)  # give the batch script a chance to finish first
+        time.sleep(8)  # give the batch script plenty of time to finish first
 
         old_exe = sys.executable + ".old"
         try:
@@ -1001,17 +1001,6 @@ class WindowsOptimizer(ctk.CTk):
                 os.remove(old_exe)
         except Exception:
             pass
-
-        current_mei = getattr(sys, "_MEIPASS", None)
-        temp_dir = os.environ.get("TEMP", "")
-        if temp_dir:
-            for mei in glob.glob(os.path.join(temp_dir, "_MEI*")):
-                if mei == current_mei:
-                    continue
-                try:
-                    shutil.rmtree(mei)
-                except Exception:
-                    pass
 
     def _prefetch_specs(self):
         try:
@@ -1093,7 +1082,7 @@ class WindowsOptimizer(ctk.CTk):
                 os.rename(new_exe, current_exe)
 
                 # Build a cleanup script that waits for our PID to exit,
-                # then deletes the .old EXE and any stale _MEI* temp dirs.
+                # then deletes the .old EXE.
                 pid = os.getpid()
                 temp_dir = os.environ.get("TEMP", "")
                 cleanup_bat = os.path.join(temp_dir, "_wo_cleanup.bat")
@@ -1105,10 +1094,8 @@ class WindowsOptimizer(ctk.CTk):
                     f.write(f'  timeout /t 1 /nobreak >NUL\n')
                     f.write(f'  goto wait\n')
                     f.write(f')\n')
-                    f.write(f'timeout /t 2 /nobreak >NUL\n')
+                    f.write(f'timeout /t 3 /nobreak >NUL\n')
                     f.write(f'del /f /q "{old_exe}" >NUL 2>&1\n')
-                    # Clean up stale _MEI* dirs (skip any that are in use by the new process)
-                    f.write(f'for /d %%D in ("{temp_dir}\\_MEI*") do rmdir /s /q "%%D" >NUL 2>&1\n')
                     f.write(f'del /f /q "{cleanup_bat}" >NUL 2>&1\n')
 
                 subprocess.Popen(
