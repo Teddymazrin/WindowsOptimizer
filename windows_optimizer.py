@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.8.0"
+VERSION     = "1.0.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -1089,16 +1089,17 @@ class WindowsOptimizer(ctk.CTk):
             return
 
         def worker():
+            new_exe = None
             try:
                 import urllib.request
                 self.after(0, lambda: self.status_var.set(f"Downloading v{latest}…"))
 
-                current_exe = sys.executable                       # e.g. C:\Tools\WinOptimizer.exe
-                exe_dir     = os.path.dirname(current_exe)         # e.g. C:\Tools
-                exe_name    = os.path.basename(current_exe)        # e.g. WinOptimizer.exe
-                new_exe     = os.path.join(exe_dir, exe_name + ".new")  # download target
+                current_exe = sys.executable
+                exe_dir     = os.path.dirname(current_exe)
+                exe_name    = os.path.basename(current_exe)
+                new_exe     = os.path.join(exe_dir, exe_name + ".new")
 
-                # ── 1. Download new EXE next to the current one ──────────
+                # ── 1. Download new EXE ──────────────────────────────────
                 def reporthook(count, block, total):
                     if total > 0:
                         pct = min(100, int(count * block * 100 / total))
@@ -1106,58 +1107,74 @@ class WindowsOptimizer(ctk.CTk):
 
                 urllib.request.urlretrieve(url, new_exe, reporthook)
 
-                # ── 2. Verify the download isn't empty / corrupt ─────────
-                if os.path.getsize(new_exe) < 1_000_000:  # sanity: EXE should be >1 MB
+                if os.path.getsize(new_exe) < 1_000_000:
                     raise RuntimeError("Downloaded file is too small — update aborted.")
 
                 self.after(0, lambda: self.status_var.set("Applying update…"))
 
-                # ── 3. Write a batch script that:
-                #        - waits for the current process to exit
-                #        - deletes the old EXE
-                #        - renames the .new to the original name
-                #        - launches the new EXE with a --cleanup-update flag
-                #        - deletes itself
-                temp_dir   = os.environ.get("TEMP", exe_dir)
-                batch_path = os.path.join(temp_dir, "_wo_update.bat")
+                # ── 2. Write a .ps1 script to disk ───────────────────────
                 current_pid = os.getpid()
+                temp_dir    = os.environ.get("TEMP", exe_dir)
+                ps1_path    = os.path.join(temp_dir, "_wo_update.ps1")
 
-                batch = f'''@echo off
-REM ── Wait for the old process to fully exit ──
-:wait_loop
-tasklist /FI "PID eq {current_pid}" 2>NUL | find /I "{current_pid}" >NUL
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >NUL
-    goto wait_loop
-)
+                ps_script = f'''
+# Wait for the old process to exit
+try {{
+    $proc = Get-Process -Id {current_pid} -ErrorAction Stop
+    $proc.WaitForExit()
+}} catch {{
+    # Process already exited
+}}
 
-REM ── Delete old EXE (now unlocked) ──
-del /f /q "{current_exe}"
+Start-Sleep -Seconds 2
 
-REM ── Rename downloaded .new → original name ──
-move /y "{new_exe}" "{current_exe}"
+# Retry deleting old EXE (file may be locked briefly)
+for ($i = 0; $i -lt 30; $i++) {{
+    try {{
+        if (Test-Path '{current_exe}') {{
+            Remove-Item -Path '{current_exe}' -Force -ErrorAction Stop
+        }}
+        break
+    }} catch {{
+        Start-Sleep -Milliseconds 500
+    }}
+}}
 
-REM ── Launch the updated EXE ──
-start "" "{current_exe}"
+# Rename .new to original name
+if (-not (Test-Path '{current_exe}')) {{
+    Move-Item -Path '{new_exe}' -Destination '{current_exe}' -Force
+}}
 
-REM ── Delete this batch script ──
-del /f /q "%~f0"
+# Launch the updated EXE
+Start-Process -FilePath '{current_exe}'
+
+# Clean up this script
+Remove-Item -Path '{ps1_path}' -Force -ErrorAction SilentlyContinue
 '''
-                with open(batch_path, "w") as f:
-                    f.write(batch)
+                with open(ps1_path, "w", encoding="utf-8") as f:
+                    f.write(ps_script)
 
-                # ── 4. Launch the batch script detached and exit ─────────
+                # ── 3. Launch .ps1 via a new hidden powershell process ───
+                #    Using WMI to create a truly independent process that
+                #    is not a child of this app.
+                wmi_cmd = (
+                    f'powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass '
+                    f'-File "{ps1_path}"'
+                )
                 subprocess.Popen(
-                    ["cmd", "/c", batch_path],
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                    [
+                        "wmic", "process", "call", "create",
+                        wmi_cmd,
+                    ],
+                    creationflags=subprocess.CREATE_NO_WINDOW,
                 )
 
+                # ── 4. Exit the current app ──────────────────────────────
                 self.after(0, lambda: self.status_var.set("Restarting…"))
-                self.after(500, lambda: os._exit(0))
+                self.after(1000, lambda: os._exit(0))
 
             except Exception as e:
-                # Clean up failed download
-                if os.path.exists(new_exe):
+                if new_exe and os.path.exists(new_exe):
                     try:
                         os.remove(new_exe)
                     except Exception:
