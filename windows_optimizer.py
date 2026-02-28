@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.6.0"
+VERSION     = "1.7.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -340,6 +340,112 @@ def game_bar_off() -> bool:
     return _reg_get(r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 1) == 0
 
 
+# ── Optional: Remove Windows Bloatware ────────────────────────────────────────
+_BLOAT_APPS = [
+    "Microsoft.3DBuilder",
+    "Microsoft.BingFinance",
+    "Microsoft.BingNews",
+    "Microsoft.BingSports",
+    "Microsoft.BingWeather",
+    "Microsoft.GamingApp",
+    "Microsoft.GetHelp",
+    "Microsoft.Getstarted",
+    "Microsoft.Messaging",
+    "Microsoft.Microsoft3DViewer",
+    "Microsoft.MicrosoftOfficeHub",
+    "Microsoft.MicrosoftSolitaireCollection",
+    "Microsoft.MicrosoftStickyNotes",
+    "Microsoft.MixedReality.Portal",
+    "Microsoft.OneConnect",
+    "Microsoft.People",
+    "Microsoft.Print3D",
+    "Microsoft.SkypeApp",
+    "Microsoft.Wallet",
+    "Microsoft.WindowsAlarms",
+    "Microsoft.WindowsCamera",
+    "microsoft.windowscommunicationsapps",
+    "Microsoft.WindowsFeedbackHub",
+    "Microsoft.WindowsMaps",
+    "Microsoft.WindowsSoundRecorder",
+    "Microsoft.Xbox.TCUI",
+    "Microsoft.XboxGameOverlay",
+    "Microsoft.XboxGamingOverlay",
+    "Microsoft.XboxIdentityProvider",
+    "Microsoft.XboxSpeechToTextOverlay",
+    "Microsoft.YourPhone",
+    "Microsoft.ZuneMusic",
+    "Microsoft.ZuneVideo",
+    "MicrosoftTeams",
+    "Microsoft.Todos",
+    "Microsoft.PowerAutomateDesktop",
+    "Clipchamp.Clipchamp",
+    "Microsoft.549981C3F5F10",  # Cortana
+    "Disney.37853FC22B2CE",     # Disney+
+    "SpotifyAB.SpotifyMusic",
+    "BytedancePte.Ltd.TikTok",
+]
+
+
+def apply_remove_bloat(status_cb=None) -> str:
+    """Remove all known bloatware apps via PowerShell."""
+    removed = 0
+    errors = 0
+    total = len(_BLOAT_APPS)
+    for i, app in enumerate(_BLOAT_APPS, 1):
+        if status_cb:
+            status_cb(f"Removing bloatware… {i}/{total}")
+        # Remove for current user
+        r1 = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f'Get-AppxPackage -Name "{app}" | Remove-AppxPackage -ErrorAction SilentlyContinue'],
+            capture_output=True, text=True, creationflags=_NO_WIN,
+        )
+        # Also remove the provisioned package so it doesn't reinstall for new users
+        r2 = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f'Get-AppxProvisionedPackage -Online | Where-Object DisplayName -EQ "{app}" '
+             f'| Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue'],
+            capture_output=True, text=True, creationflags=_NO_WIN,
+        )
+        if r1.returncode == 0 or r2.returncode == 0:
+            removed += 1
+        else:
+            errors += 1
+    return f"Bloatware removed: {removed} app(s) processed, {errors} skipped/missing."
+
+
+def revert_remove_bloat(status_cb=None) -> str:
+    """Reinstall all known bloatware apps from the Microsoft Store."""
+    if status_cb:
+        status_cb("Reinstalling bloatware apps… this may take a minute.")
+    # Re-register all built-in apps from the system store
+    script = (
+        'Get-AppxPackage -AllUsers | ForEach-Object {'
+        '  Add-AppxPackage -DisableDevelopmentMode -Register "$($_.InstallLocation)\\AppXManifest.xml" '
+        '  -ErrorAction SilentlyContinue'
+        '}'
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True, text=True, timeout=300, creationflags=_NO_WIN,
+    )
+    return "Bloatware apps reinstalled. Some may need a restart to appear."
+
+
+def bloat_removed() -> bool:
+    """Check if the majority of bloat apps are gone (sample a few key ones)."""
+    check = ["Microsoft.BingNews", "Microsoft.GetHelp", "Microsoft.ZuneMusic"]
+    for app in check:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f'if (Get-AppxPackage -Name "{app}") {{ "found" }} else {{ "gone" }}'],
+            capture_output=True, text=True, creationflags=_NO_WIN,
+        )
+        if "found" in r.stdout:
+            return False
+    return True
+
+
 def run_disk_cleanup() -> str:
     subprocess.Popen(["cleanmgr.exe", "/d", "C:"], creationflags=_NO_WIN)
     return "Disk Cleanup launched — select drives/categories and click OK."
@@ -559,6 +665,16 @@ class WindowsOptimizer(ctk.CTk):
             is_on=game_bar_off(),
             apply_fn=apply_game_bar_off,
             revert_fn=revert_game_bar_off,
+        )
+
+        self._make_toggle_card(
+            opt_frame,
+            title="Remove Windows Bloatware",
+            desc="Uninstalls pre-installed apps like Bing News, Solitaire, Xbox, Cortana, "
+                 "Teams, Clipchamp, and more. Toggle off to reinstall them.",
+            is_on=bloat_removed(),
+            apply_fn=apply_remove_bloat,
+            revert_fn=revert_remove_bloat,
         )
 
         # ── Downloads tab ────────────────────────────────────────────────────
