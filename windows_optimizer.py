@@ -330,6 +330,11 @@ def run_disk_cleanup() -> str:
     return "Disk Cleanup launched — select drives/categories and click OK."
 
 
+def run_sfc() -> str:
+    subprocess.Popen(["cmd", "/c", "sfc /scannow"], creationflags=subprocess.CREATE_NEW_CONSOLE)
+    return "SFC scan started — check the console window for results (may take a few minutes)."
+
+
 def check_for_update():
     """Returns (latest_version, exe_url) or (None, None) if up to date or on error."""
     import urllib.request, json
@@ -594,6 +599,14 @@ class WindowsOptimizer(ctk.CTk):
             desc="Launch Windows Disk Cleanup to free up space from system and junk files.",
             btn_text="Run Disk Cleanup",
             action=run_disk_cleanup,
+        )
+
+        self._make_card(
+            self._maint_cards_frame,
+            title="System File Check",
+            desc="Scan for and repair corrupted Windows system files using sfc /scannow.",
+            btn_text="Run SFC Scan",
+            action=run_sfc,
         )
 
         self._make_card(
