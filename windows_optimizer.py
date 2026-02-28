@@ -16,8 +16,9 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.0.0"
+VERSION     = "1.1.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
+_NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
 
 def resource_path(relative):
@@ -131,7 +132,7 @@ def clear_temp_files() -> str:
 
     # Also flush DNS and clear icon cache
     try:
-        subprocess.run(["ipconfig", "/flushdns"], capture_output=True, shell=True)
+        subprocess.run(["ipconfig", "/flushdns"], capture_output=True, creationflags=_NO_WIN)
     except Exception:
         pass
 
@@ -189,7 +190,7 @@ def apply_bundle() -> str:
     _reg_set(r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power", "HiberbootEnabled", 1)
     _reg_set(r"HKLM\SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabled", 0)
     _reg_set(r"HKLM\SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabledDefault", 0)
-    subprocess.run(["powercfg", "-h", "off"], capture_output=True, shell=True)
+    subprocess.run(["powercfg", "-h", "off"], capture_output=True, creationflags=_NO_WIN)
     _reg_set(r"HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications", "GlobalUserDisabled", 1)
     _reg_set(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search", "AllowCortana", 0)
     _reg_set(r"HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl", "Win32PrioritySeparation", 2)
@@ -208,7 +209,7 @@ def revert_bundle() -> str:
     _reg_set(r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power", "HiberbootEnabled", 0)
     _reg_set(r"HKLM\SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabled", 1)
     _reg_set(r"HKLM\SYSTEM\CurrentControlSet\Control\Power", "HibernateEnabledDefault", 1)
-    subprocess.run(["powercfg", "-h", "on"], capture_output=True, shell=True)
+    subprocess.run(["powercfg", "-h", "on"], capture_output=True, creationflags=_NO_WIN)
     _reg_set(r"HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications", "GlobalUserDisabled", 0)
     _reg_del_val(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search", "AllowCortana")
     _reg_set(r"HKCU\Control Panel\Mouse", "MouseSpeed", "1")
@@ -293,19 +294,19 @@ _BALANCED_GUID  = "381b4222-f694-41f0-9685-ff5bb260df2e"
 _POWER_SAVE_GUID = "a1841308-3541-4fab-bc81-f71556f20b4a"
 
 def apply_high_perf() -> str:
-    subprocess.run(["powercfg", "-restoredefaultschemes"], capture_output=True, shell=True)
-    subprocess.run(["powercfg", "-SETACTIVE", _HIGH_PERF_GUID], capture_output=True, shell=True)
-    subprocess.run(["powercfg", "-delete", _BALANCED_GUID], capture_output=True, shell=True)
-    subprocess.run(["powercfg", "-delete", _POWER_SAVE_GUID], capture_output=True, shell=True)
+    subprocess.run(["powercfg", "-restoredefaultschemes"], capture_output=True, creationflags=_NO_WIN)
+    subprocess.run(["powercfg", "-SETACTIVE", _HIGH_PERF_GUID], capture_output=True, creationflags=_NO_WIN)
+    subprocess.run(["powercfg", "-delete", _BALANCED_GUID], capture_output=True, creationflags=_NO_WIN)
+    subprocess.run(["powercfg", "-delete", _POWER_SAVE_GUID], capture_output=True, creationflags=_NO_WIN)
     return "High Performance power plan activated."
 
 def revert_high_perf() -> str:
-    subprocess.run(["powercfg", "-restoredefaultschemes"], capture_output=True, shell=True)
-    subprocess.run(["powercfg", "-SETACTIVE", _BALANCED_GUID], capture_output=True, shell=True)
+    subprocess.run(["powercfg", "-restoredefaultschemes"], capture_output=True, creationflags=_NO_WIN)
+    subprocess.run(["powercfg", "-SETACTIVE", _BALANCED_GUID], capture_output=True, creationflags=_NO_WIN)
     return "Power plan restored to Balanced."
 
 def high_perf_on() -> bool:
-    r = subprocess.run(["powercfg", "/getactivescheme"], capture_output=True, text=True, shell=True)
+    r = subprocess.run(["powercfg", "/getactivescheme"], capture_output=True, text=True, creationflags=_NO_WIN)
     return _HIGH_PERF_GUID in r.stdout.lower()
 
 
@@ -325,7 +326,7 @@ def notif_off() -> bool:
 
 
 def run_disk_cleanup() -> str:
-    subprocess.Popen(["cleanmgr.exe", "/d", "C:"], shell=True)
+    subprocess.Popen(["cleanmgr.exe", "/d", "C:"], creationflags=_NO_WIN)
     return "Disk Cleanup launched — select drives/categories and click OK."
 
 
@@ -367,7 +368,7 @@ def get_pc_specs() -> dict:
     )
     result = subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-        capture_output=True, text=True, timeout=20,
+        capture_output=True, text=True, timeout=20, creationflags=_NO_WIN,
     )
     data = json.loads(result.stdout.strip())
     return {k: (v or "N/A") for k, v in data.items()}
