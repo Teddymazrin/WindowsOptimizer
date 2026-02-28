@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.0.0"
+VERSION     = "1.1.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -105,6 +105,15 @@ def download_discord(status_cb=None) -> str:
     path = _download_file(url, "DiscordSetup.exe", status_cb)
     os.startfile(path)
     return "Discord downloaded. Installer launched."
+
+
+def download_speccy(status_cb=None) -> str:
+    url = "https://download.ccleaner.com/spsetup132.exe"
+    if status_cb:
+        status_cb("Downloading Speccy…")
+    path = _download_file(url, "spsetup132.exe", status_cb)
+    os.startfile(path)
+    return "Speccy downloaded. Installer launched."
 
 
 def clear_temp_files() -> str:
@@ -763,6 +772,14 @@ class WindowsOptimizer(ctk.CTk):
             desc="Download and install Discord, the popular voice and text chat app.",
             btn_text="Download Discord",
             action=download_discord,
+        )
+
+        self._make_card(
+            dl_frame,
+            title="Speccy",
+            desc="Download Speccy by CCleaner — a detailed system information and hardware specs tool.",
+            btn_text="Download Speccy",
+            action=download_speccy,
         )
 
         # ── Maintenance tab ──────────────────────────────────────────────────
