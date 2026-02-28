@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.5.0"
+VERSION     = "1.6.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -1098,7 +1098,7 @@ class WindowsOptimizer(ctk.CTk):
 
                 self.after(0, lambda: self.status_var.set("Applying update…"))
 
-                # Write batch script to handle closing, renaming, launching, and cleanup
+                # Write batch script to handle closing, renaming, launching, and cleanup (fully silent)
                 temp_dir = os.environ.get("TEMP", "")
                 batch_path = os.path.join(temp_dir, "_wo_update.bat")
                 exe_name = os.path.basename(current_exe)
@@ -1112,9 +1112,9 @@ REM Rename current exe to .old
 rename "{current_exe}" "{old_name}"
 REM Rename new exe to current
 rename "{new_exe}" "{exe_name}"
-REM Start the new exe
-start "" "{current_exe}"
-timeout /t 2 /nobreak >NUL
+REM Start the new exe in background (no window)
+start "" /b "{current_exe}"
+timeout /t 8 /nobreak >NUL
 REM Delete the old exe and this batch file
 del /f /q "{old_exe}"
 del /f /q "%~f0"
