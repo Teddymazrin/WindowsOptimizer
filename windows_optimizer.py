@@ -20,6 +20,12 @@ VERSION     = "1.0.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 
 
+def resource_path(relative):
+    """Resolves asset paths for both .py script and PyInstaller frozen EXE."""
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative)
+
+
 # ── Admin helpers ──────────────────────────────────────────────────────────────
 def is_admin() -> bool:
     try:
@@ -371,6 +377,10 @@ def get_pc_specs() -> dict:
 class WindowsOptimizer(ctk.CTk):
     def __init__(self):
         super().__init__()
+        try:
+            self.iconbitmap(resource_path("icon.ico"))
+        except Exception:
+            pass
         self.title("Windows Optimizer")
         self.geometry("580x640")
         self.minsize(520, 500)
