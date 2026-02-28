@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.4.0"
+VERSION     = "1.5.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -101,7 +101,7 @@ def download_7zip(status_cb=None) -> str:
 
 
 def download_discord(status_cb=None) -> str:
-    url = "https://discord.com/api/download?platform=win"
+    url = "https://discord.com/download"
     path = _download_file(url, "DiscordSetup.exe", status_cb)
     os.startfile(path)
     return "Discord downloaded. Installer launched."
