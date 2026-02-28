@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.3.0"
+VERSION     = "1.4.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -1098,32 +1098,33 @@ class WindowsOptimizer(ctk.CTk):
 
                 self.after(0, lambda: self.status_var.set("Applying update…"))
 
-                # On Windows, a running EXE can be renamed (but not deleted).
-                # So: rename current → .old, rename new → current, launch, exit.
-                # A background cmd script waits for this process to die, then cleans up.
-                if os.path.exists(old_exe):
-                    os.remove(old_exe)
-                os.rename(current_exe, old_exe)
-                os.rename(new_exe, current_exe)
-
-                # Build a cleanup script that waits for our PID to exit,
-                # then deletes the .old EXE.
+                # Write batch script to handle closing, renaming, launching, and cleanup
                 temp_dir = os.environ.get("TEMP", "")
-                cleanup_bat = os.path.join(temp_dir, "_wo_cleanup.bat")
-                with open(cleanup_bat, "w") as f:
-                    f.write(f'@echo off\n')
-                    f.write(f'timeout /t 2 /nobreak >NUL\n')
-                    f.write(f'del /f /q "{old_exe}" >NUL 2>&1\n')
-                    f.write(f'del /f /q "{cleanup_bat}" >NUL 2>&1\n')
+                batch_path = os.path.join(temp_dir, "_wo_update.bat")
+                exe_name = os.path.basename(current_exe)
+                new_name = os.path.basename(new_exe)
+                old_name = os.path.basename(old_exe)
+                batch = f"""@echo off
+REM Kill running app
+taskkill /IM "{exe_name}" /F >NUL 2>&1
+timeout /t 2 /nobreak >NUL
+REM Rename current exe to .old
+rename "{current_exe}" "{old_name}"
+REM Rename new exe to current
+rename "{new_exe}" "{exe_name}"
+REM Start the new exe
+start "" "{current_exe}"
+timeout /t 2 /nobreak >NUL
+REM Delete the old exe and this batch file
+del /f /q "{old_exe}"
+del /f /q "%~f0"
+"""
+                with open(batch_path, "w") as f:
+                    f.write(batch)
 
                 subprocess.Popen(
-                    ["cmd", "/c", cleanup_bat],
+                    ["cmd", "/c", batch_path],
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
-                )
-
-                subprocess.Popen(
-                    [current_exe],
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                 )
                 self.after(0, lambda: self.status_var.set("Restarting…"))
                 self.after(500, lambda: os._exit(0))
