@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.0.0"
+VERSION     = "1.1.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -464,6 +464,49 @@ def run_dism() -> str:
     return "DISM scan started — check the console window for results (may take several minutes)."
 
 
+# ── Boot helpers ──────────────────────────────────────────────────────────────
+def boot_to_bios() -> str:
+    """Restart straight into UEFI firmware settings."""
+    subprocess.run(
+        ["shutdown", "/r", "/fw", "/t", "0"],
+        creationflags=_NO_WIN,
+    )
+    return "Restarting into BIOS/UEFI…"
+
+
+def boot_to_recovery() -> str:
+    """Restart into the Windows Recovery Environment (Advanced Startup)."""
+    subprocess.run(
+        ["shutdown", "/r", "/o", "/t", "0"],
+        creationflags=_NO_WIN,
+    )
+    return "Restarting into Recovery Mode…"
+
+
+def boot_to_safe_mode() -> str:
+    """One-time restart into Safe Mode.
+    Sets bcdedit safeboot minimal, then creates a RunOnce script
+    that removes the safeboot flag so the *next* reboot is normal."""
+    # 1) Set Safe Mode for the next boot
+    subprocess.run(
+        ["bcdedit", "/set", "{current}", "safeboot", "minimal"],
+        capture_output=True, creationflags=_NO_WIN,
+    )
+    # 2) Create a RunOnce entry that removes the safeboot flag once Safe Mode loads.
+    #    This ensures the subsequent restart goes back to normal Windows.
+    _reg_set(
+        r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
+        "RemoveSafeBoot",
+        'bcdedit /deletevalue {current} safeboot',
+    )
+    # 3) Restart now
+    subprocess.run(
+        ["shutdown", "/r", "/t", "0"],
+        creationflags=_NO_WIN,
+    )
+    return "Restarting into Safe Mode…"
+
+
 def check_for_update():
     """Returns (latest_version, exe_url) or (None, None) if up to date or on error."""
     import urllib.request, json
@@ -572,6 +615,7 @@ class WindowsOptimizer(ctk.CTk):
         tabs.add("Optimizations")
         tabs.add("Downloads")
         tabs.add("Maintenance")
+        tabs.add("Boot")
 
         # ── Optimizations tab ────────────────────────────────────────────────
         opt_frame = ctk.CTkScrollableFrame(tabs.tab("Optimizations"), fg_color="transparent")
@@ -758,6 +802,34 @@ class WindowsOptimizer(ctk.CTk):
             desc="Launch Windows Disk Cleanup to free up space from system and junk files.",
             btn_text="Run Disk Cleanup",
             action=run_disk_cleanup,
+        )
+
+        # ── Boot tab ─────────────────────────────────────────────────────────
+        boot_frame = ctk.CTkScrollableFrame(tabs.tab("Boot"), fg_color="transparent")
+        boot_frame.pack(fill="both", expand=True, padx=8, pady=8)
+
+        self._make_card(
+            boot_frame,
+            title="Boot into BIOS / UEFI",
+            desc="Restart your PC directly into the UEFI firmware settings (BIOS).",
+            btn_text="Restart to BIOS",
+            action=boot_to_bios,
+        )
+
+        self._make_card(
+            boot_frame,
+            title="Boot into Recovery Mode",
+            desc="Restart into Windows Recovery Environment (Advanced Startup Options).",
+            btn_text="Restart to Recovery",
+            action=boot_to_recovery,
+        )
+
+        self._make_card(
+            boot_frame,
+            title="Boot into Safe Mode",
+            desc="One-time restart into Safe Mode. The next restart after that returns to normal Windows.",
+            btn_text="Restart to Safe Mode",
+            action=boot_to_safe_mode,
         )
 
         # ── Footer (status + specs in a compact 2-row bar) ────────────
