@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.2.0"
+VERSION     = "1.3.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -325,6 +325,21 @@ def notif_off() -> bool:
     return _reg_get(r"HKCU\Software\Policies\Microsoft\Windows\Explorer", "DisableNotificationCenter", 0) == 1
 
 
+# ── Optional: Disable Game Bar ────────────────────────────────────────────────
+def apply_game_bar_off() -> str:
+    _reg_set(r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 0)
+    _reg_set(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 0)
+    return "Game Bar disabled."
+
+def revert_game_bar_off() -> str:
+    _reg_set(r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 1)
+    _reg_set(r"HKCU\System\GameConfigStore", "GameDVR_Enabled", 1)
+    return "Game Bar re-enabled."
+
+def game_bar_off() -> bool:
+    return _reg_get(r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR", "AppCaptureEnabled", 1) == 0
+
+
 def run_disk_cleanup() -> str:
     subprocess.Popen(["cleanmgr.exe", "/d", "C:"], creationflags=_NO_WIN)
     return "Disk Cleanup launched — select drives/categories and click OK."
@@ -532,6 +547,15 @@ class WindowsOptimizer(ctk.CTk):
             is_on=notif_off(),
             apply_fn=apply_notif_off,
             revert_fn=revert_notif_off,
+        )
+
+        self._make_toggle_card(
+            opt_frame,
+            title="Disable Game Bar",
+            desc="Disables Xbox Game Bar and Game DVR background capture.",
+            is_on=game_bar_off(),
+            apply_fn=apply_game_bar_off,
+            revert_fn=revert_game_bar_off,
         )
 
         # ── Downloads tab ────────────────────────────────────────────────────
