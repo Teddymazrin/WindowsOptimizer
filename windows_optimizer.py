@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.7.0"
+VERSION     = "1.0.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -917,35 +917,29 @@ class WindowsOptimizer(ctk.CTk):
         self._run(fn)
 
     def _cleanup_old_update(self):
-        """Remove the .old EXE and stale _MEI* temp dirs left by a previous update.
-        Retries a few times with delays because the old process may still be exiting."""
+        """Best-effort fallback: remove leftover .old EXE and stale _MEI* dirs
+        that the cleanup batch script may have missed (e.g. from older versions)."""
         import time, glob
 
-        # 1) Delete <exe>.old
-        old_exe = sys.executable + ".old"
-        for _ in range(10):
-            if not os.path.exists(old_exe):
-                break
-            try:
-                os.remove(old_exe)
-                break
-            except Exception:
-                time.sleep(2)
+        time.sleep(5)  # give the batch script a chance to finish first
 
-        # 2) Remove stale _MEI* dirs in %TEMP% that belong to this app.
-        #    The *current* process's _MEIPASS must be skipped.
+        old_exe = sys.executable + ".old"
+        try:
+            if os.path.exists(old_exe):
+                os.remove(old_exe)
+        except Exception:
+            pass
+
         current_mei = getattr(sys, "_MEIPASS", None)
         temp_dir = os.environ.get("TEMP", "")
         if temp_dir:
             for mei in glob.glob(os.path.join(temp_dir, "_MEI*")):
                 if mei == current_mei:
                     continue
-                for _ in range(5):
-                    try:
-                        shutil.rmtree(mei)
-                        break
-                    except Exception:
-                        time.sleep(2)
+                try:
+                    shutil.rmtree(mei)
+                except Exception:
+                    pass
 
     def _prefetch_specs(self):
         try:
@@ -1020,10 +1014,35 @@ class WindowsOptimizer(ctk.CTk):
 
                 # On Windows, a running EXE can be renamed (but not deleted).
                 # So: rename current → .old, rename new → current, launch, exit.
+                # A background cmd script waits for this process to die, then cleans up.
                 if os.path.exists(old_exe):
                     os.remove(old_exe)
                 os.rename(current_exe, old_exe)
                 os.rename(new_exe, current_exe)
+
+                # Build a cleanup script that waits for our PID to exit,
+                # then deletes the .old EXE and any stale _MEI* temp dirs.
+                pid = os.getpid()
+                temp_dir = os.environ.get("TEMP", "")
+                cleanup_bat = os.path.join(temp_dir, "_wo_cleanup.bat")
+                with open(cleanup_bat, "w") as f:
+                    f.write(f'@echo off\n')
+                    f.write(f':wait\n')
+                    f.write(f'tasklist /FI "PID eq {pid}" 2>NUL | find "{pid}" >NUL\n')
+                    f.write(f'if not errorlevel 1 (\n')
+                    f.write(f'  timeout /t 1 /nobreak >NUL\n')
+                    f.write(f'  goto wait\n')
+                    f.write(f')\n')
+                    f.write(f'timeout /t 2 /nobreak >NUL\n')
+                    f.write(f'del /f /q "{old_exe}" >NUL 2>&1\n')
+                    # Clean up stale _MEI* dirs (skip any that are in use by the new process)
+                    f.write(f'for /d %%D in ("{temp_dir}\\_MEI*") do rmdir /s /q "%%D" >NUL 2>&1\n')
+                    f.write(f'del /f /q "{cleanup_bat}" >NUL 2>&1\n')
+
+                subprocess.Popen(
+                    ["cmd", "/c", cleanup_bat],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                )
 
                 subprocess.Popen(
                     [current_exe],
