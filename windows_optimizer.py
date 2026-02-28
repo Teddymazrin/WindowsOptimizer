@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.1.0"
+VERSION     = "1.1.1"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -587,6 +587,14 @@ class WindowsOptimizer(ctk.CTk):
 
         self._make_card(
             self._maint_cards_frame,
+            title="System File Check",
+            desc="Scan for and repair corrupted Windows system files using sfc /scannow.",
+            btn_text="Run SFC Scan",
+            action=run_sfc,
+        )
+
+        self._make_card(
+            self._maint_cards_frame,
             title="Clear Temp Files",
             desc="Remove temporary files from %TEMP%, C:\\Windows\\Temp, and Prefetch.",
             btn_text="Clear Temp Files",
@@ -599,14 +607,6 @@ class WindowsOptimizer(ctk.CTk):
             desc="Launch Windows Disk Cleanup to free up space from system and junk files.",
             btn_text="Run Disk Cleanup",
             action=run_disk_cleanup,
-        )
-
-        self._make_card(
-            self._maint_cards_frame,
-            title="System File Check",
-            desc="Scan for and repair corrupted Windows system files using sfc /scannow.",
-            btn_text="Run SFC Scan",
-            action=run_sfc,
         )
 
         self._make_card(
