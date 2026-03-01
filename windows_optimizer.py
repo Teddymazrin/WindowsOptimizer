@@ -16,7 +16,7 @@ ctk.set_default_color_theme("blue")
 BTN_COLOR   = "#1e1e1e"
 BTN_HOVER   = "#2e2e2e"
 
-VERSION     = "1.2.0"
+VERSION     = "1.3.0"
 GITHUB_REPO = "Teddymazrin/WindowsOptimizer"  # ← update before publishing
 _NO_WIN     = subprocess.CREATE_NO_WINDOW      # suppress console flash on all subprocess calls
 
@@ -454,6 +454,24 @@ def bloat_removed() -> bool:
     return True
 
 
+def uninstall_nvidia_driver(status_cb=None) -> str:
+    """Run the NVIDIA CleanupTool. Download it first if it doesn't exist on C:\\."""
+    exe_path = Path(r"C:\CleanupTool.exe")
+    if not exe_path.exists():
+        import urllib.request
+        url = "https://github.com/Teddymazrin/Windows-Optimization/raw/refs/heads/main/Programs/CleanupTool.exe"
+        if status_cb:
+            status_cb("Downloading NVIDIA CleanupTool…")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req) as resp:
+            with open(exe_path, "wb") as f:
+                f.write(resp.read())
+    if status_cb:
+        status_cb("Launching NVIDIA CleanupTool…")
+    os.startfile(str(exe_path))
+    return "NVIDIA CleanupTool launched."
+
+
 def run_disk_cleanup() -> str:
     subprocess.Popen(["cleanmgr.exe", "/d", "C:"], creationflags=_NO_WIN)
     return "Disk Cleanup launched — select drives/categories and click OK."
@@ -826,6 +844,14 @@ class WindowsOptimizer(ctk.CTk):
             desc="Launch Windows Disk Cleanup to free up space from system and junk files.",
             btn_text="Run Disk Cleanup",
             action=run_disk_cleanup,
+        )
+
+        self._make_card(
+            self._maint_cards_frame,
+            title="Uninstall NVIDIA Graphics Driver",
+            desc="Run the NVIDIA CleanupTool to fully uninstall your NVIDIA graphics driver.",
+            btn_text="Uninstall NVIDIA Driver",
+            action=uninstall_nvidia_driver,
         )
 
         # ── Boot tab ─────────────────────────────────────────────────────────
